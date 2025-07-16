@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Business Management System</title>
     <style>
+        /* Same CSS as before - keeping it the same */
         * {
             margin: 0;
             padding: 0;
@@ -131,9 +132,9 @@
             box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
         }
 
-        .btn-danger {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
-            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .table-container {
@@ -210,63 +211,36 @@
             border: 1px solid rgba(231, 76, 60, 0.3);
         }
 
-        .modal {
-            display: none;
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .connection-status {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
             z-index: 1000;
         }
 
-        .modal-content {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 30px;
-            border-radius: 20px;
-            max-width: 500px;
-            width: 90%;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        .connection-status.online {
+            background: rgba(39, 174, 96, 0.9);
+            color: white;
         }
 
-        .close {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            font-size: 28px;
-            cursor: pointer;
-            color: #aaa;
-        }
-
-        .close:hover {
-            color: #000;
-        }
-
-        .journal-entry {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 10px;
-            border-left: 4px solid #3498db;
-        }
-
-        .debit {
-            color: #27ae60;
-            font-weight: 600;
-        }
-
-        .credit {
-            color: #e74c3c;
-            font-weight: 600;
+        .connection-status.offline {
+            background: rgba(231, 76, 60, 0.9);
+            color: white;
         }
     </style>
 </head>
 <body>
+    <div class="connection-status" id="connectionStatus">Connecting...</div>
+    
     <div class="container">
         <div class="header">
             <h1>Business Management System</h1>
@@ -335,7 +309,7 @@
                         </select>
                     </div>
                 </div>
-                <button type="submit" class="btn">Record Sale</button>
+                <button type="submit" class="btn" id="salesSubmitBtn">Record Sale</button>
             </form>
             <div class="table-container">
                 <table id="salesTable">
@@ -350,7 +324,9 @@
                             <th>Payment</th>
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Loading sales data...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -382,7 +358,7 @@
                         <input type="text" id="productCategory" required>
                     </div>
                 </div>
-                <button type="submit" class="btn">Record Purchase</button>
+                <button type="submit" class="btn" id="purchaseSubmitBtn">Record Purchase</button>
             </form>
             <div class="table-container">
                 <table id="purchaseTable">
@@ -397,7 +373,9 @@
                             <th>Category</th>
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Loading purchase data...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -417,7 +395,9 @@
                             <th>Status</th>
                         </tr>
                     </thead>
-                    <tbody></tbody>
+                    <tbody>
+                        <tr><td colspan="6" class="loading">Loading inventory data...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -431,66 +411,104 @@
                     <button class="btn" onclick="showJournalEntries()">Show Journal</button>
                 </div>
                 <div class="form-group">
-                    <label>Generate Trial Balance</label>
-                    <button class="btn" onclick="generateTrialBalance()">Generate</button>
+                    <label>View Accounts</label>
+                    <button class="btn" onclick="showAccounts()">Show Accounts</button>
                 </div>
             </div>
             <div id="journalEntries"></div>
-            <div id="trialBalance"></div>
+            <div id="accountsData"></div>
         </div>
     </div>
 
     <script>
-        // Replace the database object with API calls
-        const API_BASE = 'https://business-management-backend-production.up.railway.app/';
+        // API Configuration - CHANGE THIS TO YOUR RAILWAY URL
+        const API_BASE = 'https://business-management-backend-production.up.railway.app/api';
         
-        // Example: Load sales data
-        async function loadSales() {
-          try {
-            const response = await fetch(`${API_BASE}/sales`);
-            const sales = await response.json();
-            // Update your table with sales data
-          } catch (error) {
-            console.error('Error loading sales:', error);
-          }
-        }
+        // Data storage
+        let salesData = [];
+        let purchasesData = [];
+        let inventoryData = [];
+        let accountsData = [];
+        let journalData = [];
         
-        // Example: Create new sale
-        async function createSale(saleData) {
-          try {
-            const response = await fetch(`${API_BASE}/sales`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(saleData)
-            });
-            const newSale = await response.json();
-            return newSale;
-          } catch (error) {
-            console.error('Error creating sale:', error);
-          }
+        // Connection status
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.textContent = status === 'online' ? 'Connected' : 'Disconnected';
+            statusEl.className = `connection-status ${status}`;
         }
-        // Database structure using localStorage simulation
-        const db = {
-            sales: JSON.parse(localStorage.getItem('sales') || '[]'),
-            purchases: JSON.parse(localStorage.getItem('purchases') || '[]'),
-            inventory: JSON.parse(localStorage.getItem('inventory') || '{}'),
-            accounts: JSON.parse(localStorage.getItem('accounts') || '{}'),
-            journal: JSON.parse(localStorage.getItem('journal') || '[]')
-        };
 
-        // Initialize accounts
-        if (Object.keys(db.accounts).length === 0) {
-            db.accounts = {
-                'Cash': { type: 'asset', balance: 0 },
-                'Accounts Receivable': { type: 'asset', balance: 0 },
-                'Inventory': { type: 'asset', balance: 0 },
-                'Accounts Payable': { type: 'liability', balance: 0 },
-                'Sales Revenue': { type: 'revenue', balance: 0 },
-                'Cost of Goods Sold': { type: 'expense', balance: 0 },
-                'Purchases': { type: 'expense', balance: 0 }
-            };
+        // API Functions
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                updateConnectionStatus('online');
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                updateConnectionStatus('offline');
+                throw error;
+            }
+        }
+
+        // Load data functions
+        async function loadSales() {
+            try {
+                salesData = await apiCall('/sales');
+                updateSalesTable();
+            } catch (error) {
+                showAlert('salesAlert', 'Failed to load sales data', 'error');
+            }
+        }
+
+        async function loadPurchases() {
+            try {
+                purchasesData = await apiCall('/purchases');
+                updatePurchaseTable();
+            } catch (error) {
+                showAlert('purchaseAlert', 'Failed to load purchase data', 'error');
+            }
+        }
+
+        async function loadInventory() {
+            try {
+                inventoryData = await apiCall('/inventory');
+                updateInventoryTable();
+            } catch (error) {
+                console.error('Failed to load inventory data');
+            }
+        }
+
+        async function loadAccounts() {
+            try {
+                accountsData = await apiCall('/accounts');
+            } catch (error) {
+                console.error('Failed to load accounts data');
+            }
+        }
+
+        async function loadJournal() {
+            try {
+                journalData = await apiCall('/journal');
+            } catch (error) {
+                console.error('Failed to load journal data');
+            }
         }
 
         // Navigation
@@ -505,156 +523,85 @@
             event.target.classList.add('active');
             
             if (sectionId === 'dashboard') updateDashboard();
-            if (sectionId === 'inventory') updateInventoryTable();
+            if (sectionId === 'inventory') loadInventory();
         }
 
         // Sales functionality
-        document.getElementById('salesForm').addEventListener('submit', function(e) {
+        document.getElementById('salesForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const customer = document.getElementById('customerName').value;
-            const product = document.getElementById('saleProduct').value;
-            const quantity = parseInt(document.getElementById('saleQuantity').value);
-            const price = parseFloat(document.getElementById('salePrice').value);
-            const payment = document.getElementById('paymentMethod').value;
+            const submitBtn = document.getElementById('salesSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
             
-            // Check inventory
-            if (!db.inventory[product] || db.inventory[product].stock < quantity) {
-                showAlert('salesAlert', 'Insufficient inventory!', 'error');
-                return;
+            try {
+                const saleData = {
+                    customer: document.getElementById('customerName').value,
+                    product: document.getElementById('saleProduct').value,
+                    quantity: parseInt(document.getElementById('saleQuantity').value),
+                    price: parseFloat(document.getElementById('salePrice').value),
+                    payment: document.getElementById('paymentMethod').value
+                };
+                
+                await apiCall('/sales', 'POST', saleData);
+                await loadSales();
+                
+                this.reset();
+                showAlert('salesAlert', 'Sale recorded successfully!', 'success');
+            } catch (error) {
+                showAlert('salesAlert', 'Failed to record sale', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Record Sale';
             }
-            
-            const total = quantity * price;
-            const sale = {
-                id: Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                customer,
-                product,
-                quantity,
-                price,
-                total,
-                payment
-            };
-            
-            db.sales.push(sale);
-            
-            // Update inventory
-            db.inventory[product].stock -= quantity;
-            
-            // Create journal entries
-            createJournalEntry('Sale Transaction', [
-                { account: payment === 'cash' ? 'Cash' : 'Accounts Receivable', debit: total },
-                { account: 'Sales Revenue', credit: total },
-                { account: 'Cost of Goods Sold', debit: db.inventory[product].avgCost * quantity },
-                { account: 'Inventory', credit: db.inventory[product].avgCost * quantity }
-            ]);
-            
-            saveData();
-            updateSalesTable();
-            this.reset();
-            showAlert('salesAlert', 'Sale recorded successfully!', 'success');
         });
 
         // Purchase functionality
-        document.getElementById('purchaseForm').addEventListener('submit', function(e) {
+        document.getElementById('purchaseForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const supplier = document.getElementById('supplierName').value;
-            const product = document.getElementById('productName').value;
-            const quantity = parseInt(document.getElementById('purchaseQuantity').value);
-            const cost = parseFloat(document.getElementById('purchaseCost').value);
-            const category = document.getElementById('productCategory').value;
+            const submitBtn = document.getElementById('purchaseSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
             
-            const total = quantity * cost;
-            const purchase = {
-                id: Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                supplier,
-                product,
-                quantity,
-                cost,
-                total,
-                category
-            };
-            
-            db.purchases.push(purchase);
-            
-            // Update inventory
-            if (!db.inventory[product]) {
-                db.inventory[product] = {
-                    category,
-                    stock: 0,
-                    avgCost: 0,
-                    totalValue: 0
+            try {
+                const purchaseData = {
+                    supplier: document.getElementById('supplierName').value,
+                    product: document.getElementById('productName').value,
+                    quantity: parseInt(document.getElementById('purchaseQuantity').value),
+                    cost: parseFloat(document.getElementById('purchaseCost').value),
+                    category: document.getElementById('productCategory').value
                 };
+                
+                await apiCall('/purchases', 'POST', purchaseData);
+                await loadPurchases();
+                
+                this.reset();
+                showAlert('purchaseAlert', 'Purchase recorded successfully!', 'success');
+            } catch (error) {
+                showAlert('purchaseAlert', 'Failed to record purchase', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Record Purchase';
             }
-            
-            // Update average cost
-            const currentValue = db.inventory[product].stock * db.inventory[product].avgCost;
-            const newValue = currentValue + total;
-            db.inventory[product].stock += quantity;
-            db.inventory[product].avgCost = newValue / db.inventory[product].stock;
-            db.inventory[product].totalValue = newValue;
-            
-            // Create journal entry
-            createJournalEntry('Purchase Transaction', [
-                { account: 'Inventory', debit: total },
-                { account: 'Accounts Payable', credit: total }
-            ]);
-            
-            saveData();
-            updatePurchaseTable();
-            updateProductOptions();
-            this.reset();
-            showAlert('purchaseAlert', 'Purchase recorded successfully!', 'success');
         });
 
-        // Journal entry creation
-        function createJournalEntry(description, entries) {
-            const journalEntry = {
-                id: Date.now(),
-                date: new Date().toISOString().split('T')[0],
-                description,
-                entries
-            };
-            
-            db.journal.push(journalEntry);
-            
-            // Update account balances
-            entries.forEach(entry => {
-                if (!db.accounts[entry.account]) {
-                    db.accounts[entry.account] = { type: 'asset', balance: 0 };
-                }
-                
-                if (entry.debit) {
-                    if (db.accounts[entry.account].type === 'asset' || db.accounts[entry.account].type === 'expense') {
-                        db.accounts[entry.account].balance += entry.debit;
-                    } else {
-                        db.accounts[entry.account].balance -= entry.debit;
-                    }
-                }
-                
-                if (entry.credit) {
-                    if (db.accounts[entry.account].type === 'liability' || db.accounts[entry.account].type === 'revenue') {
-                        db.accounts[entry.account].balance += entry.credit;
-                    } else {
-                        db.accounts[entry.account].balance -= entry.credit;
-                    }
-                }
-            });
-        }
-
-        // Update functions
+        // Update table functions
         function updateSalesTable() {
             const tbody = document.querySelector('#salesTable tbody');
-            tbody.innerHTML = db.sales.map(sale => `
+            if (salesData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="loading">No sales data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = salesData.map(sale => `
                 <tr>
-                    <td>${sale.date}</td>
+                    <td>${new Date(sale.date).toLocaleDateString()}</td>
                     <td>${sale.customer}</td>
                     <td>${sale.product}</td>
                     <td>${sale.quantity}</td>
-                    <td>₹${sale.price.toFixed(2)}</td>
-                    <td>₹${sale.total.toFixed(2)}</td>
+                    <td>₹${parseFloat(sale.price).toFixed(2)}</td>
+                    <td>₹${parseFloat(sale.total).toFixed(2)}</td>
                     <td>${sale.payment}</td>
                 </tr>
             `).join('');
@@ -662,14 +609,19 @@
 
         function updatePurchaseTable() {
             const tbody = document.querySelector('#purchaseTable tbody');
-            tbody.innerHTML = db.purchases.map(purchase => `
+            if (purchasesData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="loading">No purchase data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = purchasesData.map(purchase => `
                 <tr>
-                    <td>${purchase.date}</td>
+                    <td>${new Date(purchase.date).toLocaleDateString()}</td>
                     <td>${purchase.supplier}</td>
                     <td>${purchase.product}</td>
                     <td>${purchase.quantity}</td>
-                    <td>₹${purchase.cost.toFixed(2)}</td>
-                    <td>₹${purchase.total.toFixed(2)}</td>
+                    <td>₹${parseFloat(purchase.cost).toFixed(2)}</td>
+                    <td>₹${parseFloat(purchase.total).toFixed(2)}</td>
                     <td>${purchase.category}</td>
                 </tr>
             `).join('');
@@ -677,33 +629,30 @@
 
         function updateInventoryTable() {
             const tbody = document.querySelector('#inventoryTable tbody');
-            tbody.innerHTML = Object.entries(db.inventory).map(([product, data]) => {
-                const status = data.stock < 10 ? 'Low Stock' : 'In Stock';
+            if (inventoryData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="loading">No inventory data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = inventoryData.map(item => {
+                const status = item.stock < 10 ? 'Low Stock' : 'In Stock';
                 return `
                     <tr>
-                        <td>${product}</td>
-                        <td>${data.category}</td>
-                        <td>${data.stock}</td>
-                        <td>₹${data.avgCost.toFixed(2)}</td>
-                        <td>₹${(data.stock * data.avgCost).toFixed(2)}</td>
+                        <td>${item.product}</td>
+                        <td>${item.category}</td>
+                        <td>${item.stock}</td>
+                        <td>₹${parseFloat(item.avg_cost).toFixed(2)}</td>
+                        <td>₹${parseFloat(item.total_value).toFixed(2)}</td>
                         <td style="color: ${status === 'Low Stock' ? '#e74c3c' : '#27ae60'}">${status}</td>
                     </tr>
                 `;
             }).join('');
         }
 
-        function updateProductOptions() {
-            const select = document.getElementById('saleProduct');
-            select.innerHTML = '<option value="">Select Product</option>' + 
-                Object.keys(db.inventory).map(product => 
-                    `<option value="${product}">${product}</option>`
-                ).join('');
-        }
-
         function updateDashboard() {
-            const totalSales = db.sales.reduce((sum, sale) => sum + sale.total, 0);
-            const totalPurchases = db.purchases.reduce((sum, purchase) => sum + purchase.total, 0);
-            const totalInventory = Object.values(db.inventory).reduce((sum, item) => sum + (item.stock * item.avgCost), 0);
+            const totalSales = salesData.reduce((sum, sale) => sum + parseFloat(sale.total), 0);
+            const totalPurchases = purchasesData.reduce((sum, purchase) => sum + parseFloat(purchase.total), 0);
+            const totalInventory = inventoryData.reduce((sum, item) => sum + parseFloat(item.total_value), 0);
             const netProfit = totalSales - totalPurchases;
             
             document.getElementById('totalSales').textContent = `₹${totalSales.toFixed(2)}`;
@@ -712,67 +661,83 @@
             document.getElementById('netProfit').textContent = `₹${netProfit.toFixed(2)}`;
         }
 
-        function showJournalEntries() {
-            const container = document.getElementById('journalEntries');
-            container.innerHTML = '<h3>Journal Entries</h3>' + 
-                db.journal.map(entry => `
-                    <div class="journal-entry">
-                        <strong>${entry.date} - ${entry.description}</strong>
-                        ${entry.entries.map(item => `
-                            <div style="margin-left: 20px;">
-                                ${item.account}: 
-                                ${item.debit ? `<span class="debit">Dr. ₹${item.debit.toFixed(2)}</span>` : ''}
-                                ${item.credit ? `<span class="credit">Cr. ₹${item.credit.toFixed(2)}</span>` : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                `).join('');
+        async function showJournalEntries() {
+            try {
+                await loadJournal();
+                const container = document.getElementById('journalEntries');
+                
+                if (journalData.length === 0) {
+                    container.innerHTML = '<p>No journal entries available</p>';
+                    return;
+                }
+                
+                container.innerHTML = '<h3>Journal Entries</h3>' + 
+                    journalData.map(entry => `
+                        <div style="background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 10px; border-left: 4px solid #3498db;">
+                            <strong>${new Date(entry.date).toLocaleDateString()} - ${entry.description}</strong><br>
+                            ${entry.account}: 
+                            ${entry.debit > 0 ? `<span style="color: #27ae60; font-weight: 600;">Dr. ₹${parseFloat(entry.debit).toFixed(2)}</span>` : ''}
+                            ${entry.credit > 0 ? `<span style="color: #e74c3c; font-weight: 600;">Cr. ₹${parseFloat(entry.credit).toFixed(2)}</span>` : ''}
+                        </div>
+                    `).join('');
+            } catch (error) {
+                document.getElementById('journalEntries').innerHTML = '<p>Failed to load journal entries</p>';
+            }
         }
 
-        function generateTrialBalance() {
-            const container = document.getElementById('trialBalance');
-            let html = '<h3>Trial Balance</h3><div class="table-container"><table><thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead><tbody>';
-            
-            let totalDebit = 0, totalCredit = 0;
-            
-            Object.entries(db.accounts).forEach(([account, data]) => {
-                if (data.balance !== 0) {
-                    if (data.type === 'asset' || data.type === 'expense') {
-                        html += `<tr><td>${account}</td><td>₹${data.balance.toFixed(2)}</td><td>-</td></tr>`;
-                        totalDebit += data.balance;
-                    } else {
-                        html += `<tr><td>${account}</td><td>-</td><td>₹${data.balance.toFixed(2)}</td></tr>`;
-                        totalCredit += data.balance;
-                    }
+        async function showAccounts() {
+            try {
+                await loadAccounts();
+                const container = document.getElementById('accountsData');
+                
+                if (accountsData.length === 0) {
+                    container.innerHTML = '<p>No accounts data available</p>';
+                    return;
                 }
-            });
-            
-            html += `<tr style="font-weight: bold; background: #f8f9fa;"><td>Total</td><td>₹${totalDebit.toFixed(2)}</td><td>₹${totalCredit.toFixed(2)}</td></tr>`;
-            html += '</tbody></table></div>';
-            
-            container.innerHTML = html;
+                
+                let html = '<h3>Chart of Accounts</h3><div class="table-container"><table><thead><tr><th>Account</th><th>Type</th><th>Balance</th></tr></thead><tbody>';
+                
+                accountsData.forEach(account => {
+                    html += `<tr><td>${account.name}</td><td>${account.type}</td><td>₹${parseFloat(account.balance).toFixed(2)}</td></tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (error) {
+                document.getElementById('accountsData').innerHTML = '<p>Failed to load accounts data</p>';
+            }
         }
 
         function showAlert(containerId, message, type) {
             const container = document.getElementById(containerId);
             container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-            setTimeout(() => container.innerHTML = '', 3000);
+            setTimeout(() => container.innerHTML = '', 5000);
         }
 
-        function saveData() {
-            localStorage.setItem('sales', JSON.stringify(db.sales));
-            localStorage.setItem('purchases', JSON.stringify(db.purchases));
-            localStorage.setItem('inventory', JSON.stringify(db.inventory));
-            localStorage.setItem('accounts', JSON.stringify(db.accounts));
-            localStorage.setItem('journal', JSON.stringify(db.journal));
+        // Initialize app
+        async function initializeApp() {
+            try {
+                // Test API connection
+                await apiCall('/');
+                
+                // Load all data
+                await Promise.all([
+                    loadSales(),
+                    loadPurchases(),
+                    loadInventory(),
+                    loadAccounts()
+                ]);
+                
+                updateDashboard();
+                console.log('App initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize app:', error);
+                showAlert('salesAlert', 'Failed to connect to server. Please check your internet connection.', 'error');
+            }
         }
 
-        // Initialize
-        updateSalesTable();
-        updatePurchaseTable();
-        updateInventoryTable();
-        updateProductOptions();
-        updateDashboard();
+        // Start the app
+        window.addEventListener('load', initializeApp);
     </script>
 </body>
 </html>
