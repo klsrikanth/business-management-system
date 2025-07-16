@@ -442,35 +442,35 @@
 
     <script>
         // Replace the database object with API calls
-const API_BASE = 'https://your-app-name.railway.app/api';
-
-// Example: Load sales data
-async function loadSales() {
-  try {
-    const response = await fetch(`${API_BASE}/sales`);
-    const sales = await response.json();
-    // Update your table with sales data
-  } catch (error) {
-    console.error('Error loading sales:', error);
-  }
-}
-
-// Example: Create new sale
-async function createSale(saleData) {
-  try {
-    const response = await fetch(`${API_BASE}/sales`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(saleData)
-    });
-    const newSale = await response.json();
-    return newSale;
-  } catch (error) {
-    console.error('Error creating sale:', error);
-  }
-}
+        const API_BASE = 'https://business-management-backend-production.up.railway.app/';
+        
+        // Example: Load sales data
+        async function loadSales() {
+          try {
+            const response = await fetch(`${API_BASE}/sales`);
+            const sales = await response.json();
+            // Update your table with sales data
+          } catch (error) {
+            console.error('Error loading sales:', error);
+          }
+        }
+        
+        // Example: Create new sale
+        async function createSale(saleData) {
+          try {
+            const response = await fetch(`${API_BASE}/sales`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(saleData)
+            });
+            const newSale = await response.json();
+            return newSale;
+          } catch (error) {
+            console.error('Error creating sale:', error);
+          }
+        }
         // Database structure using localStorage simulation
         const db = {
             sales: JSON.parse(localStorage.getItem('sales') || '[]'),
